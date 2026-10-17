@@ -1,0 +1,97 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // 0. Global Safety Net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // 0.1 Context-Aware Helper Constraints & Global Primitives
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isVerified() {
+      return isSignedIn() && request.auth.token.email_verified == true;
+    }
+
+    function isValidId(id) {
+      return id is string && id.size() <= 128 && id.matches('^[a-zA-Z0-9_\\-]+$');
+    }
+
+    function incoming() {
+      return request.resource.data;
+    }
+
+    function existing() {
+      return resource.data;
+    }
+
+    // Patient Rules
+    match /patients/{patientId} {
+      // Rule 8: Secure List Queries
+      allow list: if isVerified();
+      allow get: if isVerified();
+
+      function isValidPatient(data) {
+        return data.name is string && data.name.size() > 0 && data.name.size() < 100
+          && data.email is string && data.email.size() > 0 && data.email.size() < 100
+          && data.phone is string && data.phone.size() < 25;
+      }
+
+      allow create: if isVerified() && isValidPatient(incoming());
+      
+      allow update: if isVerified() 
+        && isValidPatient(incoming())
+        // Prevent Shadow Updates & enforce immutable fields if necessary
+        && incoming().createdAt == existing().createdAt;
+    }
+
+    // Appointment Rules
+    match /appointments/{apptId} {
+      allow list: if isVerified();
+      allow get: if isVerified();
+
+      function isValidAppointment(data) {
+        return data.patientId is string && isValidId(data.patientId)
+          && data.patientName is string
+          && data.dateTime is string
+          && data.status in ['Scheduled', 'Confirmed', 'Completed', 'Cancelled'];
+      }
+
+      allow create: if isVerified() && isValidAppointment(incoming());
+      
+      allow update: if isVerified() 
+        && isValidAppointment(incoming())
+        && (
+          // Action: Status Change
+          (incoming().diff(existing()).affectedKeys().hasOnly(['status', 'updatedAt'])) ||
+          // Action: Details Update
+          (incoming().diff(existing()).affectedKeys().hasOnly(['dateTime', 'reason', 'notes', 'updatedAt']))
+        );
+      
+      allow delete: if isVerified();
+    }
+
+    // Medical Record Rules
+    match /medical_records/{recordId} {
+      allow list: if isVerified();
+      allow get: if isVerified();
+
+      function isValidMedicalRecord(data) {
+        return data.patientId is string && isValidId(data.patientId)
+          && data.diagnosis is string && data.diagnosis.size() > 0
+          && data.date is string;
+      }
+
+      allow create: if isVerified() && isValidMedicalRecord(incoming());
+      allow update: if isVerified() && isValidMedicalRecord(incoming());
+    }
+
+    // User Profile Rules
+    match /users/{userId} {
+      allow read: if isVerified();
+      allow write: if isVerified() && request.auth.uid == userId;
+    }
+  }
+}

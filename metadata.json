@@ -1,0 +1,11 @@
+{
+  "name": "CuraClinic CRM",
+  "description": "A comprehensive Clinic Relationship Management system for managing patients, appointments, and medical records with AI-powered insights.",
+  "requestFramePermissions": [],
+  "majorCapabilities": [
+    "Patient Management",
+    "Appointment Scheduling",
+    "AI Medical Summaries",
+    "MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"
+  ]
+}
